@@ -3,7 +3,14 @@
 use eframe::egui;
 use egui_extras::RetainedImage;
 
+mod calibrator;
+
 fn main() -> Result<(), eframe::Error> {
+    let image = calibrator::calibrator().unwrap(); 
+    let width = image.width() as usize;
+    let height = image.height() as usize;
+    let color_image = egui::ColorImage::from_rgba_unmultiplied([width, height], &image.into_vec());
+
     let options = eframe::NativeOptions {
         initial_window_size: Some(egui::vec2(600.0, 400.0)),
         ..Default::default()
@@ -12,7 +19,7 @@ fn main() -> Result<(), eframe::Error> {
     eframe::run_native(
         "image",
         options,
-        Box::new(|_cc| Box::<MyApp>::new(MyApp::new("/home/zhang/Pictures/cali.png"))),
+        Box::new(|_cc| Box::<MyApp>::new(MyApp::new(color_image))),
     )
 }
 
@@ -24,13 +31,8 @@ struct MyApp {
 }
 
 impl MyApp {
-    fn new(path: &str) -> Self {
-        use std::fs::read;
-        let image = RetainedImage::from_image_bytes(
-                "cali.png",
-                &read(path).unwrap(),
-            )
-            .unwrap();
+    fn new(image: egui::ColorImage) -> Self {
+        let image = RetainedImage::from_color_image("image", image);
         let ratio = image.width() as f32 / image.height() as f32;
         Self {
             image,
@@ -45,7 +47,7 @@ impl Default for MyApp {
     fn default() -> Self {
         let image = RetainedImage::from_image_bytes(
                 "cali.png",
-                include_bytes!("/home/zhang/Pictures/cali.png"),
+                include_bytes!("../cali.png"),
             )
             .unwrap();
         let ratio = image.width() as f32 / image.height() as f32;
