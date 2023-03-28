@@ -10,14 +10,16 @@ pub struct Harris {
 }
 
 pub fn detect() -> Result<RgbaImage, Box<dyn Error>> {
-    const IN_PATH: &str = "cali.png";
+    const IN_PATH: &str = "../cali.png";
 
     let input = image::open(IN_PATH)?;
     let mut rgba = input.to_rgba8();
     let img = input.to_luma8();
     let corners = detect_harris(&img, 1.0e6);
     for corner in corners {
-        imageproc::drawing::draw_hollow_circle_mut(&mut rgba, (corner.x, corner.y), 5, image::Rgba([255u8, 0, 0, 255u8]));
+        imageproc::drawing::draw_hollow_circle_mut(&mut rgba, (corner.x, corner.y), 13, image::Rgba([255u8, 0, 0, 255u8]));
+        imageproc::drawing::draw_hollow_circle_mut(&mut rgba, (corner.x, corner.y), 14, image::Rgba([255u8, 0, 0, 255u8]));
+        imageproc::drawing::draw_hollow_circle_mut(&mut rgba, (corner.x, corner.y), 15, image::Rgba([255u8, 0, 0, 255u8]));
     }
 
     Ok(rgba)
