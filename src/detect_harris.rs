@@ -9,7 +9,7 @@ pub struct Harris {
     pub score: f32,
 }
 
-pub fn calibrator() -> Result<RgbaImage, Box<dyn Error>> {
+pub fn detect() -> Result<RgbaImage, Box<dyn Error>> {
     const IN_PATH: &str = "cali.png";
     const OUT_PATH: &str = "cali_harris.png";
 
@@ -247,7 +247,7 @@ mod test{
             }
         }
 
-        let mut corners: Vec<crate::calibrator::Harris> = Vec::new();
+        let mut corners: Vec<crate::detect_harris::Harris> = Vec::new();
         let threshold = 10000000.0;
         let nms_radius = 10;
 
@@ -257,14 +257,14 @@ mod test{
             }
         }
     
-        crate::calibrator::nms(&mut scores, img_width, img_height, WIN_SIZE, nms_radius);
+        crate::detect_harris::nms(&mut scores, img_width, img_height, WIN_SIZE, nms_radius);
 
         for x in HALF_WIN_SIZE.. img_width - HALF_WIN_SIZE {
             for y in HALF_WIN_SIZE.. img_height - HALF_WIN_SIZE {
                 let idx = y * img_width + x;
                 let score = scores[idx];
                 if score > 0. {
-                    corners.push(crate::calibrator::Harris {x: x as i32, y: y as i32, score});
+                    corners.push(crate::detect_harris::Harris {x: x as i32, y: y as i32, score});
                 }
             }
         }

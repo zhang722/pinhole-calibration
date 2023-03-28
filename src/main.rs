@@ -3,10 +3,10 @@
 use eframe::egui;
 use egui_extras::RetainedImage;
 
-mod calibrator;
+mod detect_harris;
 
 fn main() -> Result<(), eframe::Error> {
-    let image = calibrator::calibrator().unwrap(); 
+    let image = detect_harris::detect().unwrap(); 
     let width = image.width() as usize;
     let height = image.height() as usize;
     let color_image = egui::ColorImage::from_rgba_unmultiplied([width, height], &image.into_vec());
