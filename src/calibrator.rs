@@ -2,58 +2,51 @@ use std::error::Error;
 
 use image::{GrayImage};
 
+#[derive(Debug)]
 pub struct Harris {
-    x: i32,
-    y: i32,
-    score: f32,
+    pub x: i32,
+    pub y: i32,
+    pub score: f32,
 }
 
 pub fn calibrator() {
 
 }
 
-fn nms(scores: &mut [f32], img_width: usize, img_height: usize, window_size: usize, nms_radius: usize) -> Vec<Harris> {
-    let mut corners: Vec<Harris> = Vec::new();
-    let threshold = 10000000.0;
+pub fn nms(scores: &mut [f32], img_width: usize, img_height: usize, window_size: usize, nms_radius: usize) {
     let half_win_size = window_size / 2;
     for y in half_win_size..img_height - half_win_size {
         for x in half_win_size..img_width - half_win_size {
             let index = y * img_width + x;
             let score = scores[index];
-            if score > threshold {
-                let mut is_maximum = true;
-                for wy in -(nms_radius as i32)..(nms_radius as i32) + 1 {
-                    for wx in -(nms_radius as i32)..(nms_radius as i32) + 1 {
-                        if wx == 0 && wy == 0 {
-                            continue;
-                        }
-                        let px = x as i32 + wx;
-                        let py = y as i32 + wy;
-                        if px < half_win_size as i32
-                            || px >= img_width as i32 - half_win_size as i32
-                            || py < half_win_size as i32
-                            || py >= img_height as i32 - half_win_size as i32
-                        {
-                            continue;
-                        }
-                        let idx = py as usize * img_width + px as usize;
-                        if score <= scores[idx] {
-                            is_maximum = false;
-                            scores[index] = 0.;
-                            break;
-                        }
+            let mut is_maximum = true;
+            for wy in -(nms_radius as i32)..(nms_radius as i32) + 1 {
+                for wx in -(nms_radius as i32)..(nms_radius as i32) + 1 {
+                    if wx == 0 && wy == 0 {
+                        continue;
                     }
-                    if !is_maximum {
+                    let px = x as i32 + wx;
+                    let py = y as i32 + wy;
+                    if px < half_win_size as i32
+                        || px >= img_width as i32 - half_win_size as i32
+                        || py < half_win_size as i32
+                        || py >= img_height as i32 - half_win_size as i32
+                    {
+                        continue;
+                    }
+                    let idx = py as usize * img_width + px as usize;
+                    if score <= scores[idx] {
+                        is_maximum = false;
+                        scores[index] = 0.;
                         break;
                     }
                 }
-                if is_maximum {
-                    corners.push(Harris{x: x as i32, y: y as i32, score});
+                if !is_maximum {
+                    break;
                 }
             }
         }
     }
-    corners
 }
 
 pub fn detect_harris(img: &GrayImage, threshold: u8) -> Result<Vec<Harris>, Box<dyn Error>> {
@@ -158,50 +151,31 @@ mod test{
             }
         }
 
-        let mut corners: Vec<(i32, i32, f32)> = Vec::new();
+        let mut corners: Vec<crate::calibrator::Harris> = Vec::new();
         let threshold = 10000000.0;
         let nms_radius = 10;
-        for y in HALF_WIN_SIZE..img_height - HALF_WIN_SIZE {
-            for x in HALF_WIN_SIZE..img_width - HALF_WIN_SIZE {
-                let index = y * img_width + x;
-                let score = scores[index];
-                if score > threshold {
-                    let mut is_maximum = true;
-                    for wy in -nms_radius..nms_radius + 1 {
-                        for wx in -nms_radius..nms_radius + 1 {
-                            if wx == 0 && wy == 0 {
-                                continue;
-                            }
-                            let px = x as i32 + wx;
-                            let py = y as i32 + wy;
-                            if px < HALF_WIN_SIZE as i32
-                                || px >= img_width as i32 - HALF_WIN_SIZE as i32
-                                || py < HALF_WIN_SIZE as i32
-                                || py >= img_height as i32 - HALF_WIN_SIZE as i32
-                            {
-                                continue;
-                            }
-                            let idx = py as usize * img_width + px as usize;
-                            if score <= scores[idx] {
-                                is_maximum = false;
-                                scores[index] = 0.;
-                                break;
-                            }
-                        }
-                        if !is_maximum {
-                            break;
-                        }
-                    }
-                    if is_maximum {
-                        corners.push((x as i32, y as i32, score));
-                    }
+
+        for score in scores.iter_mut() {
+            if *score < threshold {
+                *score = 0.;
+            }
+        }
+    
+        crate::calibrator::nms(&mut scores, img_width, img_height, WIN_SIZE, nms_radius);
+
+        for x in HALF_WIN_SIZE.. img_width - HALF_WIN_SIZE {
+            for y in HALF_WIN_SIZE.. img_height - HALF_WIN_SIZE {
+                let idx = y * img_width + x;
+                let score = scores[idx];
+                if scores > 0. {
+                    corners.push(crate::calibrator::Harris {x: x as i32, y: y as i32, score});
                 }
             }
         }
 
         for corner in corners {
             println!("{:?}", corner);
-            imageproc::drawing::draw_hollow_circle_mut(&mut rgb, (corner.0, corner.1), 5, image::Rgb([255u8, 0u8, 0]));
+            imageproc::drawing::draw_hollow_circle_mut(&mut rgb, (corner.x, corner.y), 5, image::Rgb([255u8, 0u8, 0]));
         }
         rgb.save(OUT_PATH)?;
 
