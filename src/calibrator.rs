@@ -18,7 +18,6 @@ pub fn calibrator() -> Result<RgbaImage, Box<dyn Error>> {
     let img = input.to_luma8();
     let corners = detect_harris(&img, 1.0e6);
     for corner in corners {
-        println!("{:?}", corner);
         imageproc::drawing::draw_hollow_circle_mut(&mut rgba, (corner.x, corner.y), 5, image::Rgba([255u8, 0, 0, 255u8]));
     }
 
