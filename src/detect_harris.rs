@@ -11,7 +11,6 @@ pub struct Harris {
 
 pub fn detect() -> Result<RgbaImage, Box<dyn Error>> {
     const IN_PATH: &str = "cali.png";
-    const OUT_PATH: &str = "cali_harris.png";
 
     let input = image::open(IN_PATH)?;
     let mut rgba = input.to_rgba8();
@@ -172,10 +171,6 @@ mod test{
         Ok(())
     }
 
-    fn nms(scores: &[f32]) -> Vec<(i32, i32)> {
-        todo!()
-    }
-
     #[test]
     fn test_harris() -> Result<(), Box<dyn Error>> {
         const IN_PATH: &str = "cali.png";
@@ -270,7 +265,10 @@ mod test{
         }
 
         for corner in corners {
-            imageproc::drawing::draw_hollow_circle_mut(&mut rgb, (corner.x, corner.y), 5, image::Rgb([255u8, 0u8, 0]));
+            println!("{:<4},{:<4},{}", corner.x, corner.y, corner.score);
+            imageproc::drawing::draw_hollow_circle_mut(&mut rgb, (corner.x, corner.y), 10, image::Rgb([255u8, 0u8, 0]));
+            imageproc::drawing::draw_hollow_circle_mut(&mut rgb, (corner.x, corner.y), 11, image::Rgb([255u8, 0u8, 0]));
+            imageproc::drawing::draw_hollow_circle_mut(&mut rgb, (corner.x, corner.y), 12, image::Rgb([255u8, 0u8, 0]));
         }
         rgb.save(OUT_PATH)?;
 
