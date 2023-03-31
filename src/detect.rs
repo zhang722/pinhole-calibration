@@ -2,7 +2,7 @@ use opencv::{
     prelude::*,
     imgproc,
     calib3d,
-    core::{self}, 
+    core::{self, Point2f, Point2d}, 
 };
 
 /// Detect chessboard corners using OpenCV binding library
@@ -17,7 +17,7 @@ use opencv::{
 /// '''
 /// gray: &opencv::core::Mat
 /// return: opencv::Result<Vec<core::Point2f>>
-pub fn detect_corners(gray: &Mat) -> opencv::Result<Vec<core::Point2f>> {
+pub fn detect_corners(gray: &Mat) -> opencv::Result<Vec<core::Point2d>> {
     use opencv::core::Size;
     let patternsize: Size = Size::new(7, 5);
     let mut corners = Mat::default();
@@ -35,8 +35,8 @@ pub fn detect_corners(gray: &Mat) -> opencv::Result<Vec<core::Point2f>> {
     let mut points = Vec::new();
 
     for y in 0..corners.rows() {
-        let point: core::Point2f = *corners.at(y)?;
-        points.push(point);
+        let point: Point2f = *corners.at(y)?;
+        points.push(Point2d::new(point.x as f64, point.y as f64));
     }
 
     Ok(points)

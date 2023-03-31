@@ -9,6 +9,7 @@ use opencv::{
 
 mod detect;
 mod gui;
+mod calibrate;
 
 fn main() -> Result<(), Box<dyn Error>> {
     let image_path = "./cali.jpg"; // Replace with your image path
