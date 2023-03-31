@@ -2,7 +2,6 @@ use std::error::Error;
 
 use opencv::{
     prelude::*,
-    highgui,
     imgcodecs,
     imgproc,
     core::{self}, 

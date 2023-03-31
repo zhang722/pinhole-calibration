@@ -5,7 +5,19 @@ use opencv::{
     core::{self}, 
 };
 
-pub fn detect_corners(gray: & Mat) -> opencv::Result<Vec<core::Point2f>> {
+/// Detect chessboard corners using OpenCV binding library
+/// Declaration:
+/// '''
+/// fn detect_corners(gray: &Mat) -> opencv::Result<Vec<core::Point2f>>
+/// '''
+/// Usage:
+/// '''
+/// let gray = ...;
+/// let points = detect_corners(&gray).unwrap();
+/// '''
+/// gray: &opencv::core::Mat
+/// return: opencv::Result<Vec<core::Point2f>>
+pub fn detect_corners(gray: &Mat) -> opencv::Result<Vec<core::Point2f>> {
     use opencv::core::Size;
     let patternsize: Size = Size::new(7, 5);
     let mut corners = Mat::default();
