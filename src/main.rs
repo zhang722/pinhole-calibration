@@ -4,6 +4,7 @@ use eframe::egui;
 use egui_extras::RetainedImage;
 
 mod detect_harris;
+pub mod find_corners;
 
 fn main() -> Result<(), eframe::Error> {
     let image = detect_harris::detect().unwrap(); 

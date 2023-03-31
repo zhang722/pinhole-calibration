@@ -11,3 +11,4 @@ egui = "0.21.0"
 egui_extras = {version = "0.21.0", features = ["image"]}
 image = "0.24.5"
 imageproc = "0.23.0"
+opencv = "0.78.2"
