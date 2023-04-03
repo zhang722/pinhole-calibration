@@ -12,7 +12,7 @@ mod gui;
 mod calibrate;
 
 fn main() -> Result<(), Box<dyn Error>> {
-    let image_path = "./cali.jpg"; // Replace with your image path
+    let image_path = "../cali.jpg"; // Replace with your image path
     // Load the image in color mode
     let mut image = imgcodecs::imread(image_path, imgcodecs::IMREAD_COLOR)?;
     let mut gray = Mat::default();
@@ -26,7 +26,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     let points = detect::detect_corners(&gray)?; 
 
-    for p in points {
+    for (idx, p) in points.iter().enumerate() {
         imgproc::circle(&mut image, core::Point2i::new(p.x as i32, p.y as i32), 50, core::Scalar::new(255.0, 0.0, 0.0, 255.0), 5, 
             imgproc::LINE_8, 0)?;
         println!("{:?}", p);

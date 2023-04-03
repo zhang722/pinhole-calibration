@@ -8,9 +8,9 @@ use nalgebra as na;
 pub fn generate_world_points(square_length: f64, pattern: Size) -> Result<Vec<na::Point2<f64>>, Box<dyn Error>> {
     let Size{width, height} = pattern;
     let mut world_points = Vec::new();
-    for x in 0..width {
-        for y in 0..height {
-            world_points.push(na::Point2::<f64>::new(x as f64 * square_length, y as f64 * square_length));
+    for x in 0..height {
+        for y in 0..width {
+            world_points.push(na::Point2::<f64>::new(y as f64 * square_length, x as f64 * square_length));
         }
     }
     Ok(world_points)
@@ -26,7 +26,7 @@ pub fn computeH(img_points: &Vec<na::Point2<f64>>, world_points: &Vec<na::Point2
     type MatrixXx9<T> = na::Matrix<T, na::Dyn, na::U9, na::VecStorage<T, na::Dyn, na::U9>>;
     type RowVector9<T> = na::Matrix<T, na::U1, na::U9, na::ArrayStorage<T, 1, 9>>;
 
-    let mut A = MatrixXx9::<f64>::zeros(num_points * 2);
+    let mut a = MatrixXx9::<f64>::zeros(num_points * 2);
 
     let img_world_points_iter = img_points.iter().zip(world_points.iter());
     for (idx, (img_point, world_point)) in img_world_points_iter.enumerate() {
@@ -40,19 +40,23 @@ pub fn computeH(img_points: &Vec<na::Point2<f64>>, world_points: &Vec<na::Point2
         let ay = RowVector9::<f64>::from_vec(vec![
             0.0, 0.0, 0.0, -x_w, -y_w, -1.0, v*x_w, v*y_w, v
         ]);
-        A.set_row(2 * idx, &ax);
-        A.set_row(2 * idx + 1, &ay);
+        a.set_row(2 * idx, &ax);
+        a.set_row(2 * idx + 1, &ay);
     } 
-    let svd = A.svd(false, true);
+    let svd = a.svd(false, true);
     let v_t = match svd.v_t {
         Some(v_t) => v_t,
         None => return Err(From::from("compute V failed")),
     };
     let last_row = v_t.row(v_t.nrows() - 1);
 
-    println!("{}", last_row);
+    // normalize
+    let last_row = last_row / last_row[8];
+
+    // construct matrix from vector
+    let ret = na::Matrix3::<f64>::from_iterator(last_row.into_iter().cloned()).transpose();
     
-    Ok(na::Matrix3::<f64>::from_iterator(last_row.into_iter().cloned()).transpose())
+    Ok(ret)  
 }
 
 #[cfg(test)]
@@ -108,6 +112,7 @@ fn test_computeH() -> Result<(), Box<dyn Error>> {
     let world_points = crate::calibrate::generate_world_points(30.5, pattern)?;
     let img_points = crate::detect::detect_corners(&gray)?;
     let h = super::computeH(&img_points, &world_points)?;
+
     println!("{}", h);
 
     // project frame to image
@@ -118,20 +123,24 @@ fn test_computeH() -> Result<(), Box<dyn Error>> {
     let o_i = h * o_w;
     let x_i = h * x_w;
     let y_i = h * y_w;
+    let o_i = o_i / o_i[2];
+    let x_i = x_i / x_i[2];
+    let y_i = y_i / y_i[2];
+
     println!("{},{},{}", o_i, x_i, y_i);
 
     imgproc::line(&mut image,
         core::Point2i::new(o_i.x as i32, o_i.y as i32),
         core::Point2i::new(x_i.x as i32, x_i.y as i32),
         core::Scalar::new(255.0, 0.0, 0.0, 255.0),
-        5,
+        10,
         imgproc::LINE_8,
         0)?;
     imgproc::line(&mut image,
         core::Point2i::new(o_i.x as i32, o_i.y as i32),
         core::Point2i::new(y_i.x as i32, y_i.y as i32),
         core::Scalar::new(255.0, 0.0, 0.0, 255.0),
-        50,
+        10,
         imgproc::LINE_8,
         0)?;
 
