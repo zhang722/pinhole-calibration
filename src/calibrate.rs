@@ -75,27 +75,30 @@ pub fn compute_h(img_points: &Vec<na::Point2<f64>>, world_points: &Vec<na::Point
         let v = img_point.y;
         let x_w = world_point.x;
         let y_w = world_point.y;
+
         let ax = RowVector9::<f64>::from_vec(vec![
-            -x_w, -y_w, -1.0, 0.0, 0.0, 0.0, u*x_w, u*y_w, u 
+            x_w, y_w, 1.0, 0.0, 0.0, 0.0, -u*x_w, -u*y_w, -u 
         ]);
         let ay = RowVector9::<f64>::from_vec(vec![
-            0.0, 0.0, 0.0, -x_w, -y_w, -1.0, v*x_w, v*y_w, v
+            0.0, 0.0, 0.0, x_w, y_w, 1.0, -v*x_w, -v*y_w, -v
         ]);
+        
         a.set_row(2 * idx, &ax);
         a.set_row(2 * idx + 1, &ay);
     } 
-    let svd = a.svd(false, true);
+    let svd = a.svd(true, true);
     let v_t = match svd.v_t {
         Some(v_t) => v_t,
         None => return Err(From::from("compute V failed")),
     };
-    let last_row = v_t.row(v_t.nrows() - 1);
+    let last_row = v_t.row(8);
 
     // normalize
     // let last_row = last_row / last_row[8];
 
     // construct matrix from vector
     let mut ret = na::Matrix3::<f64>::from_iterator(last_row.into_iter().cloned()).transpose();
+
 
     ret = match norm_img.1.try_inverse() {
         Some(m) => m,
@@ -187,6 +190,31 @@ pub fn compute_k(b: &na::Matrix3<f64>) -> Result<na::Matrix3<f64>, Box<dyn Error
 }
 
 
+pub fn compute_tf(h: &na::Matrix3<f64>, k: &na::Matrix3<f64>) -> Result<na::IsometryMatrix3<f64>, Box<dyn Error>>{
+    let a = match k.try_inverse() {
+        Some(m) => m, 
+        None => return Err(From::from("k is not invertible")),
+    } * h; 
+    println!("K^-1 * H:{}", a);
+    let r1 = a.column(0);
+    let r2 = a.column(1);
+    let r3 = r1.cross(&r2);
+    let mut r = na::Matrix3::<f64>::zeros();
+    r.set_column(0, &r1);
+    r.set_column(1, &r2);
+    r.set_column(2, &r3);
+    
+    let r = r.normalize();
+
+    let r = na::Rotation3::<f64>::from_matrix_eps(&r, 1.0e-9, 10, na::Rotation3::identity());
+    // let r = na::Rotation3::<f64>::from_matrix_unchecked(r);
+    let t = a.column(2);
+    let tf = na::IsometryMatrix3::<f64>::from_parts(na::Translation3::new(t[0], t[1], t[2]), r);
+
+    Ok(tf)
+}
+
+
 #[cfg(test)]
 mod test {
 
@@ -229,7 +257,7 @@ fn test_nalgebra() -> Result<(), Box<dyn Error>> {
 
 #[test]
 fn test_compute_h() -> Result<(), Box<dyn Error>> {
-    let image_path = "./cali.jpg"; // Replace with your image path
+    let image_path = "./cali/100000.png"; // Replace with your image path
     // Load the image in color mode
     let mut image = imgcodecs::imread(image_path, imgcodecs::IMREAD_COLOR)?;
     let mut gray = Mat::default();
@@ -240,9 +268,13 @@ fn test_compute_h() -> Result<(), Box<dyn Error>> {
         println!("Failed to open the image.");
         return Err(From::from("gray image is empty"));
     }
-    let pattern = Size::new(7, 5);
+    let pattern = Size::new(11, 8);
     let world_points = crate::calibrate::generate_world_points(30.5, pattern)?;
     let img_points = crate::detect::detect_corners(&gray)?;
+    for (idx, p) in img_points.iter().enumerate() {
+        if idx > 7 {break;}
+        imgproc::circle(&mut image, (p.x as i32, p.y as i32).into(), 10, core::Scalar::new(255.0, 0.0, 0.0, 255.0), 2, imgproc::LINE_8, 0)?;
+    }
     let h = super::compute_h(&img_points, &world_points)?;
 
     println!("{}", h);
@@ -283,6 +315,12 @@ fn test_compute_h() -> Result<(), Box<dyn Error>> {
 
 #[test]
 fn test_compute_b() -> Result<(), Box<dyn Error>> {
+    use std::fs::OpenOptions;
+    use std::io::prelude::*;
+    let save_path = "./save.txt";
+    let mut save_file = OpenOptions::new().append(true).open(save_path)?;
+
+
     let paths: Vec<String> = (0..=40).into_iter().map(|x| format!("./cali/{}.png", 100000 + x)).collect();
     let pattern = Size::new(11, 8);
     let world_points = crate::calibrate::generate_world_points(0.02, pattern)?;
@@ -304,7 +342,6 @@ fn test_compute_b() -> Result<(), Box<dyn Error>> {
             continue;
         }
         let h = super::compute_h(&img_points, &world_points)?;
-        println!("h:{}", h);
         hs.push(h);
     }
 
@@ -312,6 +349,26 @@ fn test_compute_b() -> Result<(), Box<dyn Error>> {
     println!("b:{}", b);
     let k = super::compute_k(&b)?;
     println!("k:{}", k);
+
+    Err(From::from("end"))
+}
+
+
+#[test]
+fn test_cross() -> Result<(), Box<dyn Error>> {
+    let cross = |u: na::Vector3<i32>, v: na::Vector3<i32>| -> na::Vector3<i32> {
+        na::Vector3::<i32>::new(
+            u[1] * v[2] - u[2] * v[1],
+            u[2] * v[0] - u[0] * v[2],
+            u[0] * v[1] - u[1] * v[0],
+        )
+    };
+
+    let a = na::Vector3::new(1, 2, 3);
+    let b = na::Vector3::new(4, 5, 6);
+    println!("{}", a.cross(&b));
+    println!("{}", cross(a, b));
+
 
     Err(From::from("end"))
 }
