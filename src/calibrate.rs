@@ -1,7 +1,7 @@
 use std::error::Error;
 
 use opencv::{
-    core::{Size}, 
+    core::{Size}, imgcodecs, prelude::{Mat, MatTraitConst}, imgproc, 
 };
 use nalgebra as na;
 
@@ -190,12 +190,11 @@ pub fn compute_k(b: &na::Matrix3<f64>) -> Result<na::Matrix3<f64>, Box<dyn Error
 }
 
 
-pub fn compute_tf(h: &na::Matrix3<f64>, k: &na::Matrix3<f64>) -> Result<na::IsometryMatrix3<f64>, Box<dyn Error>>{
+pub fn compute_tf(h: &na::Matrix3<f64>, k: &na::Matrix3<f64>) -> Result<na::Isometry3<f64>, Box<dyn Error>>{
     let a = match k.try_inverse() {
         Some(m) => m, 
         None => return Err(From::from("k is not invertible")),
     } * h; 
-    println!("K^-1 * H:{}", a);
     let r1 = a.column(0);
     let r2 = a.column(1);
     let r3 = r1.cross(&r2);
@@ -209,9 +208,57 @@ pub fn compute_tf(h: &na::Matrix3<f64>, k: &na::Matrix3<f64>) -> Result<na::Isom
     let r = na::Rotation3::<f64>::from_matrix_eps(&r, 1.0e-9, 10, na::Rotation3::identity());
     // let r = na::Rotation3::<f64>::from_matrix_unchecked(r);
     let t = a.column(2);
-    let tf = na::IsometryMatrix3::<f64>::from_parts(na::Translation3::new(t[0], t[1], t[2]), r);
+    let tf = 
+        na::Isometry3::<f64>::from_parts(na::Translation3::new(t[0], t[1], t[2]), na::UnitQuaternion::from_rotation_matrix(&r));
 
     Ok(tf)
+}
+
+
+pub fn calibrate(size: (i32, i32)/*(width, height)*/) 
+-> Result<(na::Matrix3<f64>, Vec<na::Isometry3<f64>>, Vec<Vec<na::Point2<f64>>>, Vec<na::Point2<f64>>), Box<dyn Error>> {
+    let paths: Vec<String> = (0..=40).into_iter().map(|x| format!("./cali/{}.png", 100000 + x)).collect();
+    let pattern = Size::new(size.0, size.1);
+    let world_points = crate::calibrate::generate_world_points(0.02, pattern)?;
+    let mut hs = Vec::new();
+    let mut img_points_set = Vec::new();
+
+    for path in &paths {
+        let mut image = imgcodecs::imread(path, imgcodecs::IMREAD_COLOR)?;
+        let mut gray = Mat::default();
+        imgproc::cvt_color(&image, &mut gray, imgproc::COLOR_BGR2GRAY, 0)?;
+
+        // Check if the image is empty
+        if gray.empty() {
+            println!("Failed to open the image.");
+            return Err(From::from("gray image is empty"));
+        }
+
+        let img_points = crate::detect::detect_corners(&gray)?;
+        if img_points.len() != (pattern.width * pattern.height) as usize {
+            continue;
+        }
+
+        match compute_h(&img_points, &world_points) {
+            Ok(h) => {
+                hs.push(h);
+                img_points_set.push(img_points);
+            },
+            Err(_) => continue,
+        };
+    }
+
+    let b = compute_b(&hs)?;
+    println!("b:{}", b);
+    let k = compute_k(&b)?;
+    println!("k:{}", k);
+
+    let tfs: Vec<na::Isometry3<f64>> = hs.iter().map(|h| compute_tf(h, &k).expect("compute tf failed")).collect();
+
+    Ok((k, 
+        tfs, 
+        img_points_set, 
+        world_points))
 }
 
 
@@ -242,14 +289,19 @@ fn test_generate_world_points() -> Result<(), Box<dyn Error>> {
 #[test]
 fn test_nalgebra() -> Result<(), Box<dyn Error>> {
     let v = na::RowVector4::<f64>::from_vec(vec![1., 2., 3., 4.]);
-    let m = na::Matrix2::<f64>::from_column_slice(v.as_slice());
-    let mm = na::Matrix2x3::<i32>::from_vec(vec![
-        1, 2, 3, 4, 5, 6
-    ]);
-   
     print!("{}", v);
+    let m = na::Matrix2::<f64>::from_column_slice(v.as_slice());
     print!("{}", m);
-    print!("{}", mm);
+    let m = na::Matrix2::<f64>::from_row_slice(v.as_slice());
+    print!("{}", m);
+    let m1 = na::Matrix2x3::<i32>::new(
+        1, 2, 3, 4, 5, 6 
+    );
+    print!("{}", m1);
+    let m1 = na::Matrix2x3::<i32>::from_vec(vec![
+        1, 2, 3, 4, 5, 6 ]
+    );
+    print!("{}", m1);
 
 
     Err(From::from("end"))
