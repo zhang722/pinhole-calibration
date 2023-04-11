@@ -57,6 +57,7 @@ checksum = "a8798ca7447753fcb3dd98d9095335b1564812a68c6e7c3d1926e1d5cf094e37"
 dependencies = [
  "anyhow",
  "cfg-if",
+ "nalgebra",
  "num-complex",
  "num-integer",
  "num-traits",
@@ -283,6 +284,7 @@ dependencies = [
  "num-complex",
  "num-rational",
  "num-traits",
+ "serde",
  "simba",
  "typenum",
 ]
@@ -305,6 +307,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "02e0d21255c828d6f128a1e41534206671e8c3ea0c62f32291e808dc82cff17d"
 dependencies = [
  "num-traits",
+ "serde",
 ]
 
 [[package]]
@@ -404,8 +407,10 @@ name = "pinhole-calibration"
 version = "0.1.0"
 dependencies = [
  "argmin",
+ "argmin-math",
  "nalgebra",
  "opencv",
+ "serde_json",
 ]
 
 [[package]]

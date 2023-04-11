@@ -7,5 +7,7 @@ edition = "2021"
 
 [dependencies]
 argmin = "0.8.1"
+argmin-math = { version = "0.3", features = ["nalgebra_v0_32-serde"] }
 nalgebra = "0.32.2"
 opencv = "0.78.2"
+serde_json = "1.0.95"

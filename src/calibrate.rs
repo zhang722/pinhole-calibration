@@ -205,8 +205,20 @@ pub fn compute_tf(h: &na::Matrix3<f64>, k: &na::Matrix3<f64>) -> Result<na::Isom
     
     let r = r.normalize();
 
-    let r = na::Rotation3::<f64>::from_matrix_eps(&r, 1.0e-9, 10, na::Rotation3::identity());
-    // let r = na::Rotation3::<f64>::from_matrix_unchecked(r);
+    let svd = r.svd(true, true);
+    let r = 
+    match svd.u {
+        Some(u) => u,
+        None => return Err(From::from("compute V failed")),
+    }
+    * 
+    match svd.v_t {
+        Some(v_t) => v_t,
+        None => return Err(From::from("compute V failed")),
+    }; 
+
+    // let r = na::Rotation3::<f64>::from_matrix_eps(&r, 1.0e-9, 10, na::Rotation3::identity());
+    let r = na::Rotation3::<f64>::from_matrix_unchecked(r);
     let t = a.column(2);
     let tf = 
         na::Isometry3::<f64>::from_parts(na::Translation3::new(t[0], t[1], t[2]), na::UnitQuaternion::from_rotation_matrix(&r));
@@ -401,6 +413,14 @@ fn test_compute_b() -> Result<(), Box<dyn Error>> {
     println!("b:{}", b);
     let k = super::compute_k(&b)?;
     println!("k:{}", k);
+    for (idx, h) in hs.iter().enumerate() {
+        if idx != 12 && idx != 13 && idx != 14  {
+            continue;
+        }
+        println!("{}", idx);
+        println!("{}", h);
+        println!("{}", super::compute_tf(h, &k)?);
+    }
 
     Err(From::from("end"))
 }
@@ -422,7 +442,84 @@ fn test_cross() -> Result<(), Box<dyn Error>> {
     println!("{}", cross(a, b));
 
 
-    Err(From::from("end"))
+    Err(From::from("end")) 
+}
+
+#[test]
+fn test_all_in() -> Result<(), Box<dyn Error>> {
+    let project = |K: na::Matrix3<f64>, tf: na::Isometry3<f64>, world_point: na::Point3<f64>|
+    -> na::Point2<f64> {
+        let transed = tf * world_point;
+        let xn = transed.x / transed.z;
+        let yn = transed.y / transed.z;
+        let fx = K[(0, 0)];
+        let fy = K[(1, 1)];
+        let cx = K[(0, 2)];
+        let cy = K[(1, 2)];
+        let x = fx * xn + cx;
+        let y = fy * yn + cy;
+        na::Point2::<f64>::new(x, y)
+    };
+    let (k, 
+        tfs, 
+        img_points_set, 
+        world_points) = crate::calibrate::calibrate((11, 8))?;
+    
+    let paths: Vec<String> = (0..=40).into_iter().map(|x| format!("./cali/{}.png", 100000 + x)).collect();
+    
+    for (idx, path) in paths.iter().enumerate() {
+        let mut image = imgcodecs::imread(path, imgcodecs::IMREAD_COLOR)?;
+        for (idx_p, img_point) in img_points_set[idx].iter().enumerate() {
+            
+            let wp = na::Point3::<f64>::new(world_points[idx_p].x, world_points[idx_p].y, 0.0);
+            let repro_p = project(k, tfs[idx], wp); 
+            imgproc::circle(&mut image,
+                core::Point2i::new(img_point.x as i32, img_point.y as i32),
+                5,
+                core::Scalar::new(0.0, 255.0, 0.0, 255.0),
+                1,
+                imgproc::LINE_8, 0)?;
+
+            imgproc::circle(&mut image,
+                core::Point2i::new(repro_p.x as i32, repro_p.y as i32),
+                5,
+                core::Scalar::new(255.0, 0.0, 0.0, 255.0),
+                1,
+                imgproc::LINE_8, 0)?;
+            let x_p = project(k, tfs[idx], na::Point3::<f64>::new(0.2, 0.0, 0.0));
+            let y_p = project(k, tfs[idx], na::Point3::<f64>::new(0.0, 0.14, 0.0));
+            let z_p = project(k, tfs[idx], na::Point3::<f64>::new(0.0, 0.0, 0.2));
+            let o_p = project(k, tfs[idx], na::Point3::<f64>::new(0.0, 0.0, 0.0));
+            imgproc::line(&mut image,
+                core::Point2i::new(o_p.x as i32, o_p.y as i32),
+                core::Point2i::new(x_p.x as i32, x_p.y as i32),
+                core::Scalar::new(255.0, 0.0, 0.0, 255.0),
+                3,
+                imgproc::LINE_8,
+                0)?;
+            imgproc::line(&mut image,
+                core::Point2i::new(o_p.x as i32, o_p.y as i32),
+                core::Point2i::new(y_p.x as i32, y_p.y as i32),
+                core::Scalar::new(0.0, 255.0, 0.0, 255.0),
+                3,
+                imgproc::LINE_8,
+                0)?;
+            imgproc::line(&mut image,
+                core::Point2i::new(o_p.x as i32, o_p.y as i32),
+                core::Point2i::new(z_p.x as i32, z_p.y as i32),
+                core::Scalar::new(0.0, 0.0, 255.0, 255.0),
+                3,
+                imgproc::LINE_8,
+                0)?;
+        }
+        println!("{}:\n", idx);
+        println!("{}", tfs[idx].to_matrix());
+        crate::gui::imshow("title", &image)?;
+    }
+
+
+
+    Err(From::from("end")) 
 }
 
 }

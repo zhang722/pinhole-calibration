@@ -11,7 +11,6 @@ mod detect;
 mod gui;
 mod calibrate;
 mod optimize;
-mod lm_opt;
 
 fn main() -> Result<(), Box<dyn Error>> {
     let image_path = "../cali.jpg"; // Replace with your image path

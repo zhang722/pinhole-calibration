@@ -1,7 +1,9 @@
 use argmin::solver::gaussnewton::GaussNewton;
-use argmin::core::{Error, observers::{ObserverMode, slog_logger::{SlogLogger}}, Executor, Jacobian, Operator};
-
+use argmin::core::{CostFunction, Error, Executor, Jacobian, Operator};
+use argmin::solver::linesearch::MoreThuenteLineSearch;
+use argmin::solver::quasinewton::LBFGS;
 use nalgebra as na;
+use opencv::{imgproc, imgcodecs, core};
 
 type Vector8<T> = na::Matrix<T, na::U8, na::U1, na::ArrayStorage<T, 8, 1>>;
 type Matrix2x8<T> = na::Matrix<T, na::U2, na::U8, na::ArrayStorage<T, 2, 8>>;
@@ -325,12 +327,31 @@ impl Jacobian for Calibration<'_> {
     }
 }
 
+use std::fs;
+use std::fs::OpenOptions;
+use std::io::prelude::*;
 
 pub fn optimize() -> Result<(), Box<dyn std::error::Error>> {
     let (k, 
-        tfs, 
+        mut tfs, 
         img_points_set, 
         world_points) = crate::calibrate::calibrate((11, 8))?;
+    
+    // save optimization problem
+    let mut file = OpenOptions::new()
+        .create(true)
+        .write(true)
+        .open("./problem.json")
+        .unwrap();
+    let k_json = serde_json::to_string(&k)?;
+    let tfs_json = serde_json::to_string(&tfs)?;
+    let img_points_set_json = serde_json::to_string(&img_points_set)?;
+    let world_points_json = serde_json::to_string(&world_points)?;
+
+    writeln!(file, "{{\"K\":\n{}\n,", k_json)?;
+    writeln!(file, "\"world_points\":\n{}\n,", world_points_json)?;
+    writeln!(file, "\"extrinsics\":\n{}\n,", tfs_json)?;
+    writeln!(file, "\"image_points\":\n{}\n}},", img_points_set_json)?;
 
     let world_points: Vec<_> = world_points.iter().map(|p| {
         na::Point3::<f64>::new(p.x, p.y, 0.0)
@@ -357,7 +378,7 @@ pub fn optimize() -> Result<(), Box<dyn std::error::Error>> {
             .copy_from(&log_map(tf));
     }
 
-    let solver = GaussNewton::new().with_gamma(1e-1).unwrap(); 
+    let solver = GaussNewton::new().with_gamma(1.0).unwrap(); 
     let res = Executor::new(cal_cost, solver)
         .configure(|state| state.param(init_param).max_iters(100))
         .run()?;
@@ -379,18 +400,83 @@ pub fn optimize() -> Result<(), Box<dyn std::error::Error>> {
     );
 
     // Print transforms
-    // for (i, t) in tfs.iter().enumerate() {
-    //     eprintln!("ground truth transform[{}]: {}", i, t);
-    //     eprintln!(
-    //         "optimized result[{}]: {}\n",
-    //         i,
-    //         exp_map(
-    //                 &best_param
-    //                 .fixed_view::<6, 1>(8 + 6 * i, 0)
-    //                 .clone_owned()
-    //         )
-    //     );
-    // }
+    for (i, t) in tfs.iter_mut().enumerate() {
+            *t = exp_map(
+                    &best_param
+                    .fixed_view::<6, 1>(8 + 6 * i, 0)
+                    .clone_owned()
+            );
+    }
+
+
+    // show images
+    let project = |K: na::Matrix3<f64>, tf: na::Isometry3<f64>, world_point: na::Point3<f64>|
+    -> na::Point2<f64> {
+        let transed = tf * world_point;
+        let xn = transed.x / transed.z;
+        let yn = transed.y / transed.z;
+        let fx = K[(0, 0)];
+        let fy = K[(1, 1)];
+        let cx = K[(0, 2)];
+        let cy = K[(1, 2)];
+        let x = fx * xn + cx;
+        let y = fy * yn + cy;
+        na::Point2::<f64>::new(x, y)
+    };
+    
+    let paths: Vec<String> = (0..=40).into_iter().map(|x| format!("./cali/{}.png", 100000 + x)).collect();
+    
+    for (idx, path) in paths.iter().enumerate() {
+        let mut image = imgcodecs::imread(path, imgcodecs::IMREAD_COLOR)?;
+        for (idx_p, img_point) in img_points_set[idx].iter().enumerate() {
+            
+            let wp = na::Point3::<f64>::new(world_points[idx_p].x, world_points[idx_p].y, 0.0);
+            let repro_p = project(k, tfs[idx], wp); 
+            imgproc::circle(&mut image,
+                core::Point2i::new(img_point.x as i32, img_point.y as i32),
+                5,
+                core::Scalar::new(0.0, 255.0, 0.0, 255.0),
+                1,
+                imgproc::LINE_8, 0)?;
+
+            imgproc::circle(&mut image,
+                core::Point2i::new(repro_p.x as i32, repro_p.y as i32),
+                5,
+                core::Scalar::new(255.0, 0.0, 0.0, 255.0),
+                1,
+                imgproc::LINE_8, 0)?;
+            let x_p = project(k, tfs[idx], na::Point3::<f64>::new(0.2, 0.0, 0.0));
+            let y_p = project(k, tfs[idx], na::Point3::<f64>::new(0.0, 0.14, 0.0));
+            let z_p = project(k, tfs[idx], na::Point3::<f64>::new(0.0, 0.0, 0.2));
+            let o_p = project(k, tfs[idx], na::Point3::<f64>::new(0.0, 0.0, 0.0));
+            imgproc::line(&mut image,
+                core::Point2i::new(o_p.x as i32, o_p.y as i32),
+                core::Point2i::new(x_p.x as i32, x_p.y as i32),
+                core::Scalar::new(255.0, 0.0, 0.0, 255.0),
+                3,
+                imgproc::LINE_8,
+                0)?;
+            imgproc::line(&mut image,
+                core::Point2i::new(o_p.x as i32, o_p.y as i32),
+                core::Point2i::new(y_p.x as i32, y_p.y as i32),
+                core::Scalar::new(0.0, 255.0, 0.0, 255.0),
+                3,
+                imgproc::LINE_8,
+                0)?;
+            imgproc::line(&mut image,
+                core::Point2i::new(o_p.x as i32, o_p.y as i32),
+                core::Point2i::new(z_p.x as i32, z_p.y as i32),
+                core::Scalar::new(0.0, 0.0, 255.0, 255.0),
+                3,
+                imgproc::LINE_8,
+                0)?;
+        }
+        println!("{}:\n", idx);
+        println!("{}", tfs[idx].to_matrix());
+        crate::gui::imshow("title", &image)?;
+    }
+
+
 
     Ok(())
 }
