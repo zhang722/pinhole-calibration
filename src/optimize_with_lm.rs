@@ -1,9 +1,6 @@
-use argmin::solver::gaussnewton::GaussNewton;
-use argmin::core::{CostFunction, Error, Executor, Jacobian, Operator};
-use argmin::solver::linesearch::MoreThuenteLineSearch;
-use argmin::solver::quasinewton::LBFGS;
 use nalgebra as na;
 use opencv::{imgproc, imgcodecs, core};
+use crate::lm;
 
 type Vector8<T> = na::Matrix<T, na::U8, na::U1, na::ArrayStorage<T, 8, 1>>;
 type Matrix2x8<T> = na::Matrix<T, na::U2, na::U8, na::ArrayStorage<T, 2, 8>>;
@@ -125,11 +122,10 @@ fn project(
     let xn = pt.x / pt.z;
     let yn = pt.y / pt.z;
     let rn2 = xn * xn + yn * yn;
-    let pdp = na::Point2::<f64>::new(
+    na::Point2::<f64>::new(
         fx * (xn * (1.0 + k1 * rn2 + k2 * rn2 * rn2) + 2.0 * p1 * xn * yn + p2 * (rn2 + 2.0 * xn * xn)) + cx,
         fy * (yn * (1.0 + k1 * rn2 + k2 * rn2 * rn2) + 2.0 * p2 * xn * yn + p1 * (rn2 + 2.0 * yn * yn)) + cy
-    );
-    pdp
+    )
 }
 
 /// Jacobian of the projection function with respect to the four camera
@@ -240,12 +236,8 @@ impl<'a> Calibration<'a> {
 }
 
 
-impl Operator for Calibration<'_> {
-    type Param = na::DVector<f64>;
-
-    type Output = na::DVector<f64>;
-
-    fn apply(&self, param: &Self::Param) -> Result<Self::Output, Error> {
+impl lm::LMProblem for Calibration<'_> {
+    fn residual(&self, param: &na::DVector<f64>) -> na::DVector<f64> {
                 // Get usable camera model and transforms from the parameter vector
         let (camera_model, transforms) = self.decode_params(param);
 
@@ -272,17 +264,11 @@ impl Operator for Calibration<'_> {
             }
         }
 
-        Ok(residual)
+        residual
     }
-}
 
 
-impl Jacobian for Calibration<'_> {
-    type Param = na::DVector<f64>;
-
-    type Jacobian = na::DMatrix<f64>;
-
-    fn jacobian(&self, param: &Self::Param) -> Result<Self::Jacobian, Error> {
+    fn jacobian(&self, param: &na::DVector<f64>) -> na::DMatrix<f64> {
         // Get usable camera model and transforms from the parameter vector
         let (camera_model, transforms) = self.decode_params(param);
 
@@ -323,15 +309,14 @@ impl Jacobian for Calibration<'_> {
                 residual_idx += 2;
             }
         }
-        Ok(jacobian)
+        jacobian
     }
 }
 
-use std::fs;
 use std::fs::OpenOptions;
 use std::io::prelude::*;
 
-pub fn optimize() -> Result<(), Box<dyn std::error::Error>> {
+pub fn optimize_with_lm() -> Result<(), Box<dyn std::error::Error>> {
     let (k, 
         mut tfs, 
         img_points_set, 
@@ -378,31 +363,27 @@ pub fn optimize() -> Result<(), Box<dyn std::error::Error>> {
             .copy_from(&log_map(tf));
     }
 
-    let solver = GaussNewton::new().with_gamma(1.0).unwrap(); 
-    let res = Executor::new(cal_cost, solver)
-        .configure(|state| state.param(init_param).max_iters(100))
-        .run()?;
+    let max_iter = 100;
+    let tol = 1e-8;
+    let lambda = 1e-3;
+    let gamma = 10.0;
+
+    let res = crate::lm::levenberg_marquardt(cal_cost, init_param, max_iter, tol, lambda, gamma);
 
     eprintln!("{}\n\n", res);
 
     // Print intrinsics results
     eprintln!("ground truth intrinsics: {:?}", vec![k[(0,0)], k[(1,1)], k[(0,2)], k[(1,2)]]);
-    while res.state().best_param.is_none() {
-        use std::{thread, time};
-        let ten_millis = time::Duration::from_millis(10);
 
-        thread::sleep(ten_millis);
-    }
-    let best_param = res.state().best_param.as_ref().unwrap();
     eprintln!(
         "optimized intrinsics: {}",
-        best_param.fixed_view::<8, 1>(0, 0)
+        res.fixed_view::<8, 1>(0, 0)
     );
 
     // Print transforms
     for (i, t) in tfs.iter_mut().enumerate() {
             *t = exp_map(
-                    &best_param
+                    &res
                     .fixed_view::<6, 1>(8 + 6 * i, 0)
                     .clone_owned()
             );
@@ -471,8 +452,8 @@ pub fn optimize() -> Result<(), Box<dyn std::error::Error>> {
                 imgproc::LINE_8,
                 0)?;
         }
-        println!("{}:\n", idx);
-        println!("{}", tfs[idx].to_matrix());
+        // println!("{}:\n", idx);
+        // println!("{}", tfs[idx].to_matrix());
         crate::gui::imshow("title", &image)?;
     }
 
@@ -487,8 +468,8 @@ mod test {
     use std::error::Error;
 
     #[test]
-    fn test_optimize_with_argmin() -> Result<(), Box<dyn Error>> {
-        super::optimize()?;
+    fn test_optimize_with_lm() -> Result<(), Box<dyn Error>> {
+        super::optimize_with_lm()?;
 
         Err(From::from("end"))
     }
